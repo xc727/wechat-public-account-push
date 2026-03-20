@@ -628,18 +628,18 @@ const deepseekService = {
     if (!CONFIG.DEEPSEEK_API_KEY) return { error: '未配置 DeepSeek API Key' }
 
     try {
-      const weatherInfo = (aggregatedData.weather && aggregatedData.max_temperature) 
-        ? `今天天气：${aggregatedData.weather.value}，气温：${aggregatedData.min_temperature.value}~${aggregatedData.max_temperature.value}℃。` 
+      const weatherInfo = (aggregatedData.weather && aggregatedData.max_temperature)
+        ? `今天天气：${aggregatedData.weather.value}，气温：${aggregatedData.min_temperature.value}~${aggregatedData.max_temperature.value}℃。`
         : ''
-      const newsInfo = aggregatedData.network_hot 
-        ? `今日热点摘要：\n${aggregatedData.network_hot.value.substring(0, 300)}` 
+      const newsInfo = aggregatedData.network_hot
+        ? `今日热点摘要：\n${aggregatedData.network_hot.value.substring(0, 300)}`
         : ''
-      
+
       const prompt = `你现在要扮演一个温暖贴心的朋友。今天是 ${aggregatedData.date.value}。
 ${weatherInfo}
 ${newsInfo}
 
-请根据以上信息，为用户 ${user.name} 写一段极其自然、亲切且口语化的早安问候。
+请根据以上信息，为用户 ${user.name} 写一段自然温暖、亲切且口语化的早安问候。
 要求：
 1. **绝对不要提及你是一个AI**，不要出现“为您准备”、“生成”等任何机械化或生硬词语。
 2. 语气要完全像一个真人朋友在早起后亲切的关怀，可以带一点点主观的小情绪和温暖感。
@@ -923,7 +923,8 @@ const templateService = {
             wind_direction: '#32CD32',
             wind_scale: '#FFD700',
             birthday_message: '#FF69B4',
-            moment_copyrighting: '#9370DB'
+            moment_copyrighting: '#9370DB',
+            chinese_note: '#8A2BE2'
           }
 
           if (colorMap[key]) {
@@ -932,16 +933,14 @@ const templateService = {
         }
       }
 
-      // 微信测试号格式处理
+      // 修复微信数据 Payload：补全每个变量的 color 属性
       if (isWeChatTest) {
-        content = encodeURIComponent(content)
-        const formattedValue = { value: content, color: color }
-        desc = desc.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
-        title = title.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
-      } else {
-        desc = desc.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
-        title = title.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
+        data[key] = { value: content, color: color }
       }
+
+      // 统一替换 desc 和 title 模板（不需要进行 URI 转码，避免破坏中文渲染）
+      desc = desc.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
+      title = title.replace(new RegExp(`{{${key}\\.DATA}}`, 'g'), content)
     }
 
     return { title, desc }
@@ -981,7 +980,7 @@ const dataAggregationService = {
         }
       }
 
-  
+
       // 生日和纪念日处理
       let birthdayMessage = ''
       if (user.festivals && user.festivals.length > 0) {
