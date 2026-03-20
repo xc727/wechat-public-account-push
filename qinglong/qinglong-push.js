@@ -97,6 +97,11 @@ const initializeAndValidateConfig = (rawConfig) => {
     RETRY_DELAY: rawConfig.RETRY_DELAY
   }
 
+  logInfo(`已识别配置项: ${Object.keys(rawConfig).join(', ')}`)
+  if (!rawConfig.DEEPSEEK_API_KEY) {
+    logWarning('⚠️ 未在 ALL_CONFIG 中检测到 DEEPSEEK_API_KEY，将无法使用 AI 功能')
+  }
+
   // 验证微信配置
   if (!config.APP_ID && !config.APP_SECRET) {
     issues.push('未配置微信APP_ID或APP_SECRET，将无法使用微信推送')
@@ -652,13 +657,13 @@ const deepseekService = {
       const response = await httpClient.post('https://api.deepseek.com/chat/completions', {
         model: 'deepseek-chat',
         messages: [
-          { role: 'system', content: '你是一个贴心的私人助理。' },
+          { role: 'system', content: '你是一个温暖体心的朋友。' },
           { role: 'user', content: prompt }
         ],
         stream: false
       }, {
         headers: {
-          'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY}`,
+          'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY.trim()}`,
           'Content-Type': 'application/json'
         }
       })
@@ -1061,13 +1066,21 @@ const dataAggregationService = {
 
       // DeepSeek AI 祝福语
       if (CONFIG.DEEPSEEK_API_KEY) {
-        logInfo(`正在为用户 ${user.name} 生成 AI 祝福语...`)
+        logInfo(`正在为用户 ${user.name} 生成 AI 祝福语 (Key长度: ${CONFIG.DEEPSEEK_API_KEY.length})...`)
         const aiBlessing = await deepseekService.getAiBlessing(user, data)
         if (!aiBlessing.error) {
           data.ai_blessing = { value: aiBlessing.content, color: '#FF7F50' }
         } else {
-          logWarning(`AI 祝福语生成失败: ${aiBlessing.error}`)
+          logError(`AI 祝福语生成失败: ${aiBlessing.error}`)
+          // 备选方案：如果 AI 失败，手动拼接一个完整信息作为兜底
+          const fallbackMsg = `今天是：${data.date.value}\n\n🌟 宝贝早安！新的一天也要元气满满哦！\n\n🌍 永川天气：${data.weather ? data.weather.value : '获取中'} ${data.min_temperature ? data.min_temperature.value : ''}~${data.max_temperature ? data.max_temperature.value : ''}℃\n\n每日一句：\n${data.chinese_note ? data.chinese_note.value : '每一天都是新的开始'}`
+          data.ai_blessing = { value: fallbackMsg, color: '#FF0000' }
+          logWarning('已启动 AI 失败兜底方案，发送基础格式信息。')
         }
+      } else {
+        logWarning('未检测到 DEEPSEEK_API_KEY，正在使用基础兜底内容。')
+        const fallbackMsg = `今天是：${data.date.value}\n\n🌟 宝贝早安！新的一天也要元气满满哦！\n\n🌍 永川天气：${data.weather ? data.weather.value : '获取中'} ${data.min_temperature ? data.min_temperature.value : ''}~${data.max_temperature ? data.max_temperature.value : ''}℃\n\n每日一句：\n${data.chinese_note ? data.chinese_note.value : '每一天都是新的开始'}`
+        data.ai_blessing = { value: fallbackMsg, color: '#FF0000' }
       }
 
       return data
@@ -1144,7 +1157,15 @@ class PushService {
 
         // 处理模板数据
         const isWeChatTest = !!(this.accessToken && user.id)
+        logInfo(`正在处理用户 ${user.name} 的模板数据...`)
         const { desc } = templateService.processTemplate(template, aggregatedData, isWeChatTest, user.showColor)
+        
+        if (isWeChatTest) {
+          logInfo(`微信推送数据项: ${Object.keys(aggregatedData).join(', ')}`)
+          if (!aggregatedData.ai_blessing) {
+            logError('❌ 错误：推送数据中缺失 ai_blessing 项！')
+          }
+        }
 
         // 发送推送
         const sendResult = await pushService.sendToUser(user, desc, aggregatedData, this.accessToken)
