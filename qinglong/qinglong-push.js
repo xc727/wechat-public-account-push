@@ -658,9 +658,10 @@ const deepseekService = {
           { role: 'system', content: '你现在要扮演一个温暖贴心的朋友。这封信是专门写给“胡瑛函（你可以亲切地叫她福音涵）”的真实老友，绝对不要透露你是AI。' },
           { role: 'user', content: prompt }
         ],
-        stream: false
+        stream: false,
+        max_tokens: 100 // 严格限制输出字数以防微信模板报错
       }, {
-        timeout: 60000, // 增加到60秒，DeepSeek长文生成可能较慢
+        timeout: 60000, 
         headers: {
           'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY.trim()}`,
           'Content-Type': 'application/json'
