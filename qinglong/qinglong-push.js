@@ -669,7 +669,11 @@ const deepseekService = {
       })
 
       if (response && response.choices && response.choices[0]) {
-        return { content: response.choices[0].message.content.trim() }
+        // 彻底清除换行符和非法字符，防止脚本截断
+        let content = response.choices[0].message.content.trim()
+          .replace(/[\r\n]/g, ' ') // 移除所有换行
+          .substring(0, 150)       // 再次物理截断长度
+        return { content }
       }
       return { error: 'DeepSeek API 返回异常' }
     } catch (error) {
@@ -788,6 +792,8 @@ const pushService = {
       topcolor: '#FF0000',
       data: templateData
     }
+
+    logInfo(`微信推送 Payload: ${JSON.stringify(data)}`)
 
     const result = await httpClient.post(
       `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${accessToken}`,
@@ -1064,23 +1070,20 @@ const dataAggregationService = {
         }
       }
 
-      // DeepSeek AI 祝福语
       if (CONFIG.DEEPSEEK_API_KEY) {
         logInfo(`正在为用户 ${user.name} 生成 AI 祝福语 (Key长度: ${CONFIG.DEEPSEEK_API_KEY.length})...`)
         const aiBlessing = await deepseekService.getAiBlessing(user, data)
         if (!aiBlessing.error) {
-          data.ai_blessing = { value: aiBlessing.content, color: '#FF7F50' }
+          // 统一使用标准黑色，防止微信颜色解析异常
+          data.ai_blessing = { value: aiBlessing.content, color: '#000000' }
         } else {
           logError(`AI 祝福语生成失败: ${aiBlessing.error}`)
-          // 备选方案：如果 AI 失败，手动拼接一个完整信息作为兜底
-          const fallbackMsg = `今天是：${data.date.value}\n\n🌟 宝贝早安！新的一天也要元气满满哦！\n\n🌍 永川天气：${data.weather ? data.weather.value : '获取中'} ${data.min_temperature ? data.min_temperature.value : ''}~${data.max_temperature ? data.max_temperature.value : ''}℃\n\n每日一句：\n${data.chinese_note ? data.chinese_note.value : '每一天都是新的开始'}`
-          data.ai_blessing = { value: fallbackMsg, color: '#FF0000' }
-          logWarning('已启动 AI 失败兜底方案，发送基础格式信息。')
+          const fallbackMsg = `🌟 宝贝早安！新的一天也要元气满满哦！`
+          data.ai_blessing = { value: fallbackMsg, color: '#000000' }
         }
       } else {
-        logWarning('未检测到 DEEPSEEK_API_KEY，正在使用基础兜底内容。')
-        const fallbackMsg = `今天是：${data.date.value}\n\n🌟 宝贝早安！新的一天也要元气满满哦！\n\n🌍 永川天气：${data.weather ? data.weather.value : '获取中'} ${data.min_temperature ? data.min_temperature.value : ''}~${data.max_temperature ? data.max_temperature.value : ''}℃\n\n每日一句：\n${data.chinese_note ? data.chinese_note.value : '每一天都是新的开始'}`
-        data.ai_blessing = { value: fallbackMsg, color: '#FF0000' }
+        const fallbackMsg = `🌟 宝贝早安！新的一天也要元气满满哦！`
+        data.ai_blessing = { value: fallbackMsg, color: '#000000' }
       }
 
       return data
