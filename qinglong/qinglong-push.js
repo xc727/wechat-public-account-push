@@ -90,6 +90,7 @@ const initializeAndValidateConfig = (rawConfig) => {
     SLEEP_TIME: rawConfig.SLEEP_TIME,
     USERS: rawConfig.USER_INFO || [],
     TIAN_API_KEY: rawConfig.TIAN_API_KEY || '',
+    DEEPSEEK_API_KEY: rawConfig.DEEPSEEK_API_KEY || '',
     FESTIVALS_LIMIT: rawConfig.FESTIVALS_LIMIT,
     API_TIMEOUT: rawConfig.API_TIMEOUT,
     MAX_RETRIES: rawConfig.MAX_RETRIES,
@@ -358,7 +359,7 @@ const validateTemplateConfig = () => {
     const validVariables = ['date', 'city', 'weather', 'max_temperature', 'min_temperature',
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
-      'chinese_note', 'english_note']
+      'chinese_note', 'english_note', 'ai_blessing']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -615,6 +616,57 @@ const tianApiService = {
       }
     } catch (error) {
       return { error: `获取全网热搜榜失败：${error.message}` }
+    }
+  }
+}
+
+/**
+ * DeepSeek AI 服务
+ */
+const deepseekService = {
+  async getAiBlessing(user, aggregatedData) {
+    if (!CONFIG.DEEPSEEK_API_KEY) return { error: '未配置 DeepSeek API Key' }
+
+    try {
+      const weatherInfo = (aggregatedData.weather && aggregatedData.max_temperature) 
+        ? `今天天气：${aggregatedData.weather.value}，气温：${aggregatedData.min_temperature.value}~${aggregatedData.max_temperature.value}℃。` 
+        : ''
+      const newsInfo = aggregatedData.network_hot 
+        ? `今日热点摘要：\n${aggregatedData.network_hot.value.substring(0, 300)}` 
+        : ''
+      
+      const prompt = `你现在要扮演一个温暖贴心的朋友。今天是 ${aggregatedData.date.value}。
+${weatherInfo}
+${newsInfo}
+
+请根据以上信息，为用户 ${user.name} 写一段极其自然、亲切且口语化的早安问候。
+要求：
+1. **绝对不要提及你是一个AI**，不要出现“为您准备”、“生成”等任何机械化或生硬词语。
+2. 语气要完全像一个真人朋友在早起后亲切的关怀，可以带一点点主观的小情绪和温暖感。
+3. 结合今天的天气或热点，给出像真人一样的随性建议或感慨（比如：今天天晴，正好把烦心事晒干吧）。
+4. 核心主题：保持开心、新的一天、不要难过。
+5. 长度在60-100字之间，直接返回话话内容，不要任何标题或解释。`
+
+      const response = await httpClient.post('https://api.deepseek.com/chat/completions', {
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: '你是一个贴心的私人助理。' },
+          { role: 'user', content: prompt }
+        ],
+        stream: false
+      }, {
+        headers: {
+          'Authorization': `Bearer ${CONFIG.DEEPSEEK_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response && response.choices && response.choices[0]) {
+        return { content: response.choices[0].message.content.trim() }
+      }
+      return { error: 'DeepSeek API 返回异常' }
+    } catch (error) {
+      return { error: `DeepSeek API 调用失败: ${error.message}` }
     }
   }
 }
@@ -1006,13 +1058,14 @@ const dataAggregationService = {
         }
       }
 
-      // 课程表
-      if (user.courseSchedule) {
-        const todayCourses = courseScheduleService.getTodayCourses(user.courseSchedule)
-        if (todayCourses !== null) {
-          data.today_courses = {
-            value: courseScheduleService.formatCourses(todayCourses)
-          }
+      // DeepSeek AI 祝福语
+      if (CONFIG.DEEPSEEK_API_KEY) {
+        logInfo(`正在为用户 ${user.name} 生成 AI 祝福语...`)
+        const aiBlessing = await deepseekService.getAiBlessing(user, data)
+        if (!aiBlessing.error) {
+          data.ai_blessing = { value: aiBlessing.content, color: '#FF7F50' }
+        } else {
+          logWarning(`AI 祝福语生成失败: ${aiBlessing.error}`)
         }
       }
 
